@@ -8,7 +8,7 @@
 |---|---|
 | `build.py` (בסקרצ׳פד) | מקור האמת של הנתונים – מייצר xlsx, JSON ו-`appsdata.json` |
 | `apps-script/` | פרויקט Apps Script (clasp) – בונה את הגוגל-שיט ומשמש Web App לסנכרון |
-| `app/index.html` | אפליקציית המעקב – קובץ אחד, React UMD, בלי build |
+| `index.html` | אפליקציית המעקב – קובץ אחד, React UMD, בלי build |
 | `out/` | הפלטים: xlsx עם 5 גליונות, `shots.json`, `appsdata.json` |
 | `extracted/` | הגרסה הישנה (ברייקדאון מאי) לצורך השוואה |
 
@@ -27,7 +27,7 @@ build.py  →  appsdata.json  →  Data.js  →  [clasp push]  →  Apps Script
                                                           גוגל-שיט (5 גליונות)
                                                                  │
                                                     doGet/doPost ▼
-                                                          app/index.html
+                                                          index.html
 ```
 
 - הגליון `ברייקדאון` הוא **מקור האמת** לשוטים. עריכות של הצוות בשיט מגיעות לאפליקציה בפול הבא (כל 15 שניות).
@@ -70,5 +70,5 @@ clasp list-deployments
 ## אבטחה – לשים לב
 
 ה-Web App פרוס כ-`ANYONE_ANONYMOUS`, כלומר **כל מי שיש לו את ה-SYNC_URL יכול לקרוא ולעדכן את הברייקדאון**.
-זו אותה תצורה כמו בפרויקט מאי. אם `app/index.html` נדחף לריפו ציבורי – הכתובת חשופה.
+זו אותה תצורה כמו בפרויקט מאי. אם `index.html` נדחף לריפו ציבורי – הכתובת חשופה.
 חלופה: להעביר את ה-Web App ל-`access: "MYSELF"` או `"DOMAIN"` ולהגיש את האפליקציה מאחורי התחברות.
