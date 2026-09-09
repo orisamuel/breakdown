@@ -6,17 +6,46 @@
 
 | נתיב | מה זה |
 |---|---|
-| `build.py` (בסקרצ׳פד) | מקור האמת של הנתונים – מייצר xlsx, JSON ו-`appsdata.json` |
-| `apps-script/` | פרויקט Apps Script (clasp) – בונה את הגוגל-שיט ומשמש Web App לסנכרון |
+| `build.py` | מייצר את הברייקדאון של אסטרל: xlsx עם 5 גליונות + `appsdata.json` |
+| `apps-script/` | פרויקט Apps Script (clasp) – רישום ברייקדאונים, מנתח גליונות גנרי, Web App |
+| `apps-script/Parse.js` | המנתח הגנרי: מזהה גליון ושורת כותרת, מילוי כלפי מטה, שורות מקטע |
+| `apps-script/api.py` | קליינט CLI לבדיקות מול ה-Web App |
 | `index.html` | אפליקציית המעקב – קובץ אחד, React UMD, בלי build |
 | `out/` | הפלטים: xlsx עם 5 גליונות, `shots.json`, `appsdata.json` |
-| `extracted/` | הגרסה הישנה (ברייקדאון מאי) לצורך השוואה |
+
 
 ## קישורים חיים
 
-- **גוגל-שיט:** https://docs.google.com/spreadsheets/d/12YslHLXOAoeqPFqpMzGRSg2AJX2Wqvuiay7qd_VAKwY/edit
+- **האפליקציה:** https://orisamuel.github.io/breakdown/
+- **ריפו:** https://github.com/orisamuel/breakdown
+- **גוגל-שיט (אסטרל HR):** https://docs.google.com/spreadsheets/d/12YslHLXOAoeqPFqpMzGRSg2AJX2Wqvuiay7qd_VAKwY/edit
 - **Apps Script:** https://script.google.com/home/projects/16by1gQ7-jxxiB-mMY_aVFtz40Ke4JN2hBZm-bWhm9PrkuHrY8pzdW3Rv/edit
 - **Web App (SYNC_URL):** מופיע ב-`apps-script/.webapp-url`
+
+## ריבוי ברייקדאונים
+
+האפליקציה נפתחת במסך בחירה. כל ברייקדאון הוא גוגל-שיט נפרד, והסטטוסים שלו
+נשמרים בגליון מוסתר `_status` **בתוך אותו קובץ** – אז ברייקדאונים לא מתערבבים.
+
+**להוסיף חדש:** ＋ במסך הבחירה, מדביקים קישור לגוגל-שיט. המנתח מזהה לבד
+את הגליון ואת שורת הכותרת, ועובד גם על הפורמט הישן: תאים ממוזגים אנכית
+נגררים כלפי מטה, מיזוגים אופקיים מזוהים כשורות מקטע (ארוחות/מעברים),
+ושורת כותרת שחוזרת בתוך הנתונים מדולגת.
+
+עמודות שמזוהות (עם וריאציות): `#` `יום` `שעה` `מלון` `תלות קאסט` `אשכול`
+`לוקיישן` `קטגוריה` `סרטון` `סוג סרטון` `תסריט` `קאסט` `לוגיסטיקה - לקוח`
+`לוגיסטיקה - הפקה` `הלבשה` `הערות` `בוצע`. הדרישה המינימלית: `תסריט` + עוד שתיים.
+
+## API
+
+| קריאה | מה מחזיר |
+|---|---|
+| `GET ?action=list` | רשימת הברייקדאונים |
+| `GET ?p=<id>` | `{project, items, statuses}` |
+| `GET ?action=diag&p=<id>` | מה המנתח רואה בקובץ (כותרת, מיזוגים, מיפוי עמודות) |
+| `POST {action:'add', url, name}` | מוסיף ברייקדאון מקישור |
+| `POST {action:'remove', p}` | מסיר מהרשימה (הקובץ לא נמחק) |
+| `POST {p, statuses}` | שומר סטטוסים |
 
 ## איך זה עובד
 
