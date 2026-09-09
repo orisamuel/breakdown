@@ -34,7 +34,7 @@ function doPost(e) {
   try {
     lock.waitLock(25000);
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    var action = body.action || (body.statuses ? 'statuses' : '');
+    var action = body.action || ((body.patch || body.statuses) ? 'statuses' : '');
 
     if (action === 'add')    return json_({ ok: true, project: addProject_(body.url, body.name, body.slug) });
     if (action === 'remove') return json_({ ok: removeProject_(body.p) });
@@ -45,9 +45,19 @@ function doPost(e) {
       var entry = body.p ? findProject_(body.p) : legacyProject_();
       if (!entry) throw new Error('לא נמצא ברייקדאון כזה');
       var ss = SpreadsheetApp.openById(entry.ssId);
-      writeStatusesOf_(ss, body.statuses);
-      refreshCounts_(entry, ss, body.statuses);
-      return json_({ ok: true, ts: new Date().getTime() });
+      var result;
+      if (body.replace === true) {
+        // איפוס מלא – רק לניהול, לא ממסך הסט
+        writeAllStatuses_(ss, body.statuses || {});
+        result = { statuses: body.statuses || {}, changed: Object.keys(body.statuses || {}) };
+      } else {
+        // ברירת המחדל: מיזוג. body.patch עדיף; body.statuses נתמך לתאימות.
+        result = mergeStatusesOf_(ss, body.patch || body.statuses || {});
+      }
+      refreshCounts_(entry, ss, result.statuses);
+      // מחזירים את המצב המלא כדי שהלקוח יתיישר מיד, בלי להמתין לפול
+      return json_({ ok: true, ts: new Date().getTime(),
+                     changed: result.changed, statuses: result.statuses });
     }
 
     throw new Error('פעולה לא מוכרת: ' + action);

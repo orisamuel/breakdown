@@ -172,8 +172,8 @@ function statusSheet_(ss) {
   var sh = ss.getSheetByName('_status');
   if (!sh) {
     sh = ss.insertSheet('_status');
-    sh.getRange(1, 1, 1, 6)
-      .setValues([['id', 'status', 'completionPct', 'reason', 'notes', 'tsOverride']])
+    sh.getRange(1, 1, 1, 7)
+      .setValues([['id', 'status', 'completionPct', 'reason', 'notes', 'tsOverride', 'updatedAt']])
       .setFontWeight('bold');
     sh.setFrozenRows(1);
   }
@@ -184,7 +184,7 @@ function statusSheet_(ss) {
 function readStatusesOf_(ss) {
   var sh = ss.getSheetByName('_status');
   if (!sh || sh.getLastRow() < 2) return {};
-  var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 6).getValues();
+  var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues();
   var out = {};
   for (var r = 0; r < vals.length; r++) {
     var id = String(vals[r][0]).trim();
@@ -194,6 +194,7 @@ function readStatusesOf_(ss) {
     if (vals[r][3]) o.reason = String(vals[r][3]);
     if (vals[r][4]) o.notes = String(vals[r][4]);
     if (vals[r][5]) o.tsOverride = String(vals[r][5]);
+    if (vals[r][6]) o.updatedAt = String(vals[r][6]);
     out[id] = o;
   }
   return out;
@@ -203,7 +204,40 @@ var LABELS = {
   pending: '', done: 'בוצע', partial: 'חלקית', delayed: 'נדחה', skipped: 'לא בוצע'
 };
 
-function writeStatusesOf_(ss, statuses) {
+/**
+ * ממזג פאטץ׳ אל הסטטוסים הקיימים. קורא-ממזג-כותב *בתוך* ה-lock של doPost,
+ * ולכן לקוח עם מצב מיושן לא יכול לדרוס שינוי של לקוח אחר.
+ * patch = { <id>: {status?, completionPct?, reason?, notes?, tsOverride?} | null }
+ *   null במקום אובייקט = מחיקת הסטטוס של הפריט.
+ *   null בשדה בודד     = מחיקת השדה.
+ */
+function mergeStatusesOf_(ss, patch) {
+  var cur = readStatusesOf_(ss);
+  var stamp = new Date().toISOString();
+  var changed = [];
+
+  for (var id in patch) {
+    if (!Object.prototype.hasOwnProperty.call(patch, id)) continue;
+    var p = patch[id];
+    changed.push(id);
+    if (p === null || p === undefined) { delete cur[id]; continue; }
+    var merged = {};
+    if (cur[id]) for (var k0 in cur[id]) merged[k0] = cur[id][k0];
+    for (var k in p) {
+      if (!Object.prototype.hasOwnProperty.call(p, k)) continue;
+      if (p[k] === null) delete merged[k];
+      else merged[k] = p[k];
+    }
+    merged.updatedAt = stamp;
+    cur[id] = merged;
+  }
+
+  writeAllStatuses_(ss, cur);
+  return { statuses: cur, changed: changed };
+}
+
+/** כותב את המצב המלא. לקרוא רק מתוך lock, על מצב שמוזג מהשרת. */
+function writeAllStatuses_(ss, statuses) {
   var sh = statusSheet_(ss);
   var ids = Object.keys(statuses);
   ids.sort(function (a, b) { return (Number(a) || 0) - (Number(b) || 0); });
@@ -212,11 +246,11 @@ function writeStatusesOf_(ss, statuses) {
     var s = statuses[id] || {};
     return [id, s.status || 'pending',
             (s.completionPct === undefined || s.completionPct === null) ? '' : s.completionPct,
-            s.reason || '', s.notes || '', s.tsOverride || ''];
+            s.reason || '', s.notes || '', s.tsOverride || '', s.updatedAt || ''];
   });
 
-  if (sh.getMaxRows() > 1) sh.getRange(2, 1, sh.getMaxRows() - 1, 6).clearContent();
-  if (rows.length) sh.getRange(2, 1, rows.length, 6).setValues(rows);
+  if (sh.getMaxRows() > 1) sh.getRange(2, 1, sh.getMaxRows() - 1, 7).clearContent();
+  if (rows.length) sh.getRange(2, 1, rows.length, 7).setValues(rows);
 
   reflectDoneOf_(ss, statuses);
 }

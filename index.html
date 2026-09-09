@@ -330,22 +330,87 @@ function Board(props){
   var sdf=useState("all"),depF=sdf[0],setDepF=sdf[1];
   var sst=useState("idle"),syncStatus=sst[0],setSyncStatus=sst[1];
   var sc=useState(false),copied=sc[0],setCopied=sc[1];
-  var dirty=useRef(false),timer=useRef(null),latest=useRef({});
-  latest.current={statuses:statuses};
+  var sq=useState(0),queued=sq[0],setQueued=sq[1];
+  // תור השינויים שטרם נשמרו. שולחים *רק* אותם, והשרת ממזג –
+  // כך ששני מכשירים לא דורסים אחד את השני.
+  var pending=useRef({}),inflight=useRef(false),timer=useRef(null);
+
+  function nQueued(){return Object.keys(pending.current).length;}
+  function mergeOne(base,p){
+    var m={},k,k2;
+    if(base)for(k in base)m[k]=base[k];
+    for(k2 in p){if(p[k2]===null)delete m[k2];else m[k2]=p[k2];}
+    return m;
+  }
+  /** מצב השרת + השינויים שממתינים, כדי שהמסך לא יקפוץ אחורה */
+  function overlay(server){
+    var out={},k,id;
+    for(k in server)out[k]=server[k];
+    for(id in pending.current){
+      var p=pending.current[id];
+      if(p===null)delete out[id];
+      else out[id]=mergeOne(out[id],p);
+    }
+    return out;
+  }
 
   function pull(){
-    if(dirty.current)return;
     setSyncStatus("syncing");
     api(null,{p:pid}).then(function(d){
-      if(dirty.current){setSyncStatus("ok");return;}
-      setItems(d.items||[]);setStatuses(d.statuses||{});setProj(d.project||{});
-      setSyncStatus("ok");
+      setItems(d.items||[]);
+      setStatuses(overlay(d.statuses||{}));
+      setProj(d.project||{});
+      setSyncStatus(nQueued()?"pending":"ok");
     })["catch"](function(){setSyncStatus("error");});
   }
-  function push(sts){
+
+  function flush(){
+    if(inflight.current)return;
+    var batch=pending.current;
+    if(!Object.keys(batch).length)return;
+    pending.current={};            // לוקחים את האצווה; שינויים חדשים נכנסים לתור נקי
+    inflight.current=true;
     setSyncStatus("syncing");
-    api({p:pid,statuses:sts}).then(function(){dirty.current=false;setSyncStatus("ok");})
-      ["catch"](function(){setSyncStatus("error");});
+    api({p:pid,patch:batch}).then(function(d){
+      inflight.current=false;
+      setStatuses(overlay(d.statuses||{}));
+      setQueued(nQueued());
+      setSyncStatus(nQueued()?"pending":"ok");
+      if(nQueued())flush();
+    })["catch"](function(){
+      inflight.current=false;
+      // מחזירים את האצווה לתור. שינויים שנוספו בזמן הבקשה גוברים.
+      var newer=pending.current,id;
+      pending.current=batch;
+      for(id in newer)pending.current[id]=newer[id];
+      setQueued(nQueued());
+      setSyncStatus("error");
+    });
+  }
+  function schedule(){
+    if(timer.current)clearTimeout(timer.current);
+    timer.current=setTimeout(flush,1200);
+  }
+
+  /** מוסיף פאטץ׳ לתור, מעדכן מיד את המסך, ומתזמן שליחה */
+  function applyPatch(obj){
+    var id;
+    for(id in obj){
+      var p=obj[id];
+      pending.current[id]=(p===null)?null:mergeOne(pending.current[id],p);
+    }
+    setQueued(nQueued());
+    setStatuses(function(prev){
+      var out={},k,id2;
+      for(k in prev)out[k]=prev[k];
+      for(id2 in obj){
+        var q=obj[id2];
+        if(q===null)delete out[id2];
+        else out[id2]=mergeOne(out[id2],q);
+      }
+      return out;
+    });
+    schedule();
   }
   useEffect(function(){
     document.title=(proj.name?proj.name+" · ":"")+"ברייקדאון";
@@ -355,14 +420,21 @@ function Board(props){
   useEffect(function(){save(KS,statuses);},[statuses]);
   useEffect(function(){pull();},[pid]);
   useEffect(function(){
-    if(!dirty.current)return;
-    if(timer.current)clearTimeout(timer.current);
-    timer.current=setTimeout(function(){push(statuses);},1500);
-    return function(){if(timer.current)clearTimeout(timer.current);};
-  },[statuses]);
+    var t=setInterval(function(){ if(nQueued())flush(); else pull(); },15000);
+    return function(){clearInterval(t);if(timer.current)clearTimeout(timer.current);};
+  },[pid]);
+  // שליחה אחרונה כשהדף נסגר, כדי לא לאבד סימון של הרגע האחרון
   useEffect(function(){
-    var t=setInterval(function(){if(dirty.current)push(latest.current.statuses);else pull();},15000);
-    return function(){clearInterval(t);};
+    function bye(){
+      if(nQueued()&&navigator.sendBeacon){
+        try{
+          navigator.sendBeacon(SYNC_URL,
+            new Blob([JSON.stringify({p:pid,patch:pending.current})],{type:"text/plain"}));
+        }catch(e){}
+      }
+    }
+    window.addEventListener("pagehide",bye);
+    return function(){window.removeEventListener("pagehide",bye);};
   },[pid]);
 
   var shots=items.filter(function(i){return !i.isBreak;});
@@ -373,34 +445,24 @@ function Board(props){
   var curDay=day&&days.indexOf(day)>=0?day:(days[0]||"");
   useEffect(function(){if(days.length&&!day)setDay(days[0]);},[items.length]);
 
-  function upSt(id,patch){
-    dirty.current=true;
-    setStatuses(function(p){var n=Object.assign({},p);n[id]=Object.assign({},p[id]||{},patch);return n;});
-  }
+  function upSt(id,patch){var o={};o[id]=patch;applyPatch(o);}
   function delayDay(m){
-    dirty.current=true;
-    setStatuses(function(p){
-      var n=Object.assign({},p);
-      shots.forEach(function(it){
-        if(curDay&&it.day!==curDay)return;
-        var s=(n[it.id]&&n[it.id].status)||ST.PENDING;
-        if(s!==ST.PENDING&&s!==ST.PARTIAL)return;
-        var base=(n[it.id]&&n[it.id].tsOverride)||it.ts;
-        if(base)n[it.id]=Object.assign({},n[it.id]||{},{tsOverride:addM(base,m)});
-      });
-      return n;
+    var o={};
+    shots.forEach(function(it){
+      if(curDay&&it.day!==curDay)return;
+      var st0=stOf(it.id);
+      if(st0!==ST.PENDING&&st0!==ST.PARTIAL)return;
+      var base=tsOf(it);
+      if(base)o[it.id]={tsOverride:addM(base,m)};
     });
+    if(Object.keys(o).length)applyPatch(o);
     setShowGD(false);
   }
   function delayOne(id,m){
-    dirty.current=true;
-    setStatuses(function(p){
-      var n=Object.assign({},p),it=null;
-      shots.forEach(function(x){if(x.id===id)it=x;});
-      var base=(n[id]&&n[id].tsOverride)||(it?it.ts:"");
-      n[id]=Object.assign({},n[id]||{},{tsOverride:addM(base,m),status:ST.DELAYED});
-      return n;
-    });
+    var it=null;shots.forEach(function(x){if(x.id===id)it=x;});
+    var base=(statuses[id]&&statuses[id].tsOverride)||(it?it.ts:"");
+    var o={};o[id]={tsOverride:addM(base,m),status:ST.DELAYED};
+    applyPatch(o);
   }
 
   if(!items.length){
@@ -511,12 +573,17 @@ function Board(props){
         }))));
   }
 
-  var syncColor=syncStatus==="syncing"?"#fbbf24":syncStatus==="ok"?"#4ade80":syncStatus==="error"?"#f87171":"#7dd3fc";
-  var syncTitle=syncStatus==="syncing"?"מסנכרן":syncStatus==="ok"?"מסונכרן":syncStatus==="error"?"שגיאת סנכרון":"מחובר";
+  var SYNCV={syncing:["#fbbf24","מסנכרן","\u2601"],ok:["#4ade80","מסונכרן","\u2601"],
+             error:["#f87171","לא נשמר – יישלח שוב","\u26a0"],
+             pending:["#fbbf24","ממתין לשמירה","\u2601"],idle:["#7dd3fc","מחובר","\u2601"]};
+  var sv=SYNCV[syncStatus]||SYNCV.idle;
+  var syncColor=sv[0];
+  var syncTitle=sv[1]+(queued?" ("+queued+")":"");
+  var syncIcon=queued?String(queued):sv[2];
 
   var shareKey=proj.slug||pid;
   var headBtns=[
-    h("span",{key:"set",title:syncTitle,onClick:pull,style:{background:"#0f172a",border:"1px solid "+syncColor,color:syncColor,borderRadius:"8px",padding:"6px 10px",fontSize:"14px",lineHeight:1,cursor:"pointer"}},"☁"),
+    h("span",{key:"set",title:syncTitle,onClick:pull,style:{background:"#0f172a",border:"1px solid "+syncColor,color:syncColor,borderRadius:"8px",padding:"6px 10px",fontSize:"14px",lineHeight:1,cursor:"pointer",fontWeight:queued?800:400}},syncIcon),
     h("button",{key:"lk",title:"העתק קישור לברייקדאון הזה",onClick:function(){
       copyLink(shareKey,function(ok){setCopied(!!ok);setTimeout(function(){setCopied(false);},1800);});
     },style:{background:copied?"#052e16":"#1e1b4b",border:"1px solid "+(copied?"#166534":"#4c1d95"),color:copied?"#4ade80":"#a78bfa",borderRadius:"8px",padding:"6px 10px",fontSize:"13px",cursor:"pointer",lineHeight:1}},copied?"✓":"🔗")
