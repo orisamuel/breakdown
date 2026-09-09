@@ -92,7 +92,12 @@ function mergedBreakRows_(sh, firstRow, numRows) {
     var ranges = sh.getRange(firstRow, 1, numRows, sh.getLastColumn()).getMergedRanges();
     for (var i = 0; i < ranges.length; i++) {
       var r = ranges[i];
-      if (r.getNumRows() === 1 && r.getNumColumns() >= 3) set[r.getRow()] = true;
+      if (r.getNumRows() !== 1 || r.getNumColumns() < 3) continue;
+      // שומרים את עמודת העוגן – שם יושבת התווית של המקטע
+      var row = r.getRow(), col = r.getColumn();
+      if (!set[row] || r.getNumColumns() > set[row].cols) {
+        set[row] = { col: col, cols: r.getNumColumns() };
+      }
     }
   } catch (e) {}
   return set;
@@ -141,10 +146,13 @@ function readBreakdown_(ss) {
 
     if (isRepeatedHeader_(row)) continue;   // כותרת שחוזרת בתוך הנתונים
 
-    if (breaks[firstRow + r]) {
+    var bmeta = breaks[firstRow + r];
+    if (bmeta) {
       nBreak++;
-      items.push({ id: 'b' + nBreak, isBreak: true, script: firstText_(row),
-                   day: carry.day || '', ts: raw.ts || '' });
+      var label = String(row[bmeta.col - 1] == null ? '' : row[bmeta.col - 1]).trim();
+      if (!label) label = firstText_(row);
+      items.push({ id: 'b' + nBreak, isBreak: true, script: label,
+                   day: raw.day || carry.day || '', ts: raw.ts || '' });
       continue;
     }
 
