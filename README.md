@@ -17,10 +17,29 @@
 ## קישורים חיים
 
 - **האפליקציה:** https://orisamuel.github.io/breakdown/
+- **אסטרל HR:** https://orisamuel.github.io/breakdown/#/p/astral-hr
+- **ברייקדאון מאי (ארכיון):** https://orisamuel.github.io/breakdown/#/p/may
 - **ריפו:** https://github.com/orisamuel/breakdown
 - **גוגל-שיט (אסטרל HR):** https://docs.google.com/spreadsheets/d/12YslHLXOAoeqPFqpMzGRSg2AJX2Wqvuiay7qd_VAKwY/edit
 - **Apps Script:** https://script.google.com/home/projects/16by1gQ7-jxxiB-mMY_aVFtz40Ke4JN2hBZm-bWhm9PrkuHrY8pzdW3Rv/edit
 - **Web App (SYNC_URL):** מופיע ב-`apps-script/.webapp-url`
+
+## כתובות
+
+לכל ברייקדאון כתובת משלו, שאפשר לשתף ישר לצוות:
+
+```
+https://orisamuel.github.io/breakdown/            ← מסך הבחירה
+https://orisamuel.github.io/breakdown/#/p/<slug>  ← ברייקדאון ספציפי
+```
+
+הניתוב הוא ב-hash ולא ב-path, כדי שיעבוד על GitHub Pages בלי הגדרות שרת ובלי 404.
+כפתורי אחורה/קדימה של הדפדפן עובדים, וכותרת הטאב מתחלפת לשם הברייקדאון.
+בכל כרטיס ובכותרת הלוח יש 🔗 שמעתיק את הקישור.
+
+ה-`slug` נקבע בהוספה (שדה אופציונלי, אנגלית). אם לא נותנים – נגזר מהשם,
+ולשם בעברית זה יוצא ריק ואז הכתובת נופלת ל-id. אפשר לשנות אחר כך:
+`POST {action:'rename', p:'<id>', slug:'my-shoot'}`.
 
 ## ריבוי ברייקדאונים
 
@@ -43,8 +62,10 @@
 | `GET ?action=list` | רשימת הברייקדאונים |
 | `GET ?p=<id>` | `{project, items, statuses}` |
 | `GET ?action=diag&p=<id>` | מה המנתח רואה בקובץ (כותרת, מיזוגים, מיפוי עמודות) |
-| `POST {action:'add', url, name}` | מוסיף ברייקדאון מקישור |
+| `POST {action:'add', url, name, slug}` | מוסיף ברייקדאון מקישור |
+| `POST {action:'rename', p, name, slug}` | משנה שם או slug |
 | `POST {action:'remove', p}` | מסיר מהרשימה (הקובץ לא נמחק) |
+| `POST {action:'rebuild'}` | מרנדר מחדש את גליון אסטרל מ-`Data.js` |
 | `POST {p, statuses}` | שומר סטטוסים |
 
 ## איך זה עובד
@@ -95,6 +116,13 @@ cd apps-script && clasp push --force
 clasp update-deployment <deploymentId> --description "vN"
 clasp list-deployments
 ```
+
+ב-`p` אפשר להעביר id או slug.
+
+## קאשינג
+
+GitHub Pages מגיש את ה-HTML עם קאש קצר. אחרי עדכון של האפליקציה, מי שכבר
+פתח אותה עשוי לראות גרסה ישנה עד רענון קשה (Ctrl+Shift+R / משיכה למטה בנייד).
 
 ## אבטחה – לשים לב
 
