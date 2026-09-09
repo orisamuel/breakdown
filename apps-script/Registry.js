@@ -17,10 +17,35 @@ function projects_() {
 
 function saveProjects_(list) { props_().setProperty(P_KEY, JSON.stringify(list)); }
 
-function findProject_(id) {
-  var list = projects_();
-  for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+/** מאתר ברייקדאון לפי id או לפי slug (הכתובת הקריאה לשיתוף) */
+function findProject_(key) {
+  key = String(key || '');
+  var list = projects_(), i;
+  for (i = 0; i < list.length; i++) if (list[i].id === key) return list[i];
+  for (i = 0; i < list.length; i++) if (list[i].slug && list[i].slug === key) return list[i];
   return null;
+}
+
+/** כתובת קריאה: אנגלית/ספרות/מקפים בלבד. ריק אם אין מה לגזור. */
+function slugify_(s) {
+  var out = String(s || '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 40)
+    .replace(/-+$/g, '');
+  return out;
+}
+
+/** מוודא שה-slug פנוי; אם לא – מוסיף סיפרה */
+function uniqueSlug_(base, exceptId) {
+  if (!base) return '';
+  var list = projects_(), taken = {};
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id !== exceptId && list[i].slug) taken[list[i].slug] = 1;
+  }
+  if (!taken[base]) return base;
+  for (var n = 2; n < 50; n++) if (!taken[base + '-' + n]) return base + '-' + n;
+  return '';
 }
 
 /** מחלץ מזהה קובץ מקישור גוגל-שיטס או מקבל מזהה ישר */
@@ -35,10 +60,10 @@ function extractId_(s) {
   throw new Error('לא זיהיתי מזהה גוגל-שיט בקישור הזה');
 }
 
-function slug_() { return 'p' + new Date().getTime().toString(36); }
+function newId_() { return 'p' + new Date().getTime().toString(36); }
 
 /** מוסיף ברייקדאון חדש מקישור לגוגל-שיט. מאמת שאפשר לקרוא אותו. */
-function addProject_(url, name) {
+function addProject_(url, name, slug) {
   var ssId = extractId_(url);
   var list = projects_();
   for (var i = 0; i < list.length; i++) {
@@ -53,9 +78,11 @@ function addProject_(url, name) {
   var shots = parsed.items.filter(function (x) { return !x.isBreak; }).length;
   if (!shots) throw new Error('נמצא גליון אבל בלי שוטים – בדוק שיש עמודת "תסריט" עם תוכן');
 
+  var title = String(name || '').trim() || ss.getName();
   var entry = {
-    id: slug_(),
-    name: String(name || '').trim() || ss.getName(),
+    id: newId_(),
+    slug: uniqueSlug_(slugify_(slug) || slugify_(title)),
+    name: title,
     ssId: ssId,
     url: ss.getUrl(),
     sheetName: parsed.sheetName,
@@ -68,10 +95,11 @@ function addProject_(url, name) {
   return entry;
 }
 
-function removeProject_(id) {
+function removeProject_(key) {
+  var found = findProject_(key);
   var list = projects_(), out = [], hit = false;
   for (var i = 0; i < list.length; i++) {
-    if (list[i].id === id) { hit = true; continue; }
+    if (found && list[i].id === found.id) { hit = true; continue; }
     out.push(list[i]);
   }
   if (!hit) throw new Error('לא נמצא ברייקדאון כזה');
@@ -79,16 +107,22 @@ function removeProject_(id) {
   return true;
 }
 
-function renameProject_(id, name) {
+function renameProject_(key, name, slug) {
+  var found = findProject_(key);
+  if (!found) throw new Error('לא נמצא ברייקדאון כזה');
   var list = projects_(), hit = null;
-  for (var i = 0; i < list.length; i++) if (list[i].id === id) { list[i].name = String(name).trim(); hit = list[i]; }
-  if (!hit) throw new Error('לא נמצא ברייקדאון כזה');
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id !== found.id) continue;
+    if (name !== undefined && String(name).trim()) list[i].name = String(name).trim();
+    if (slug !== undefined) list[i].slug = uniqueSlug_(slugify_(slug), found.id);
+    hit = list[i];
+  }
   saveProjects_(list);
   return hit;
 }
 
 /** מעדכן את מוני השוטים/בוצעו ברישום (לתצוגה במסך הבחירה) */
-function touchCounts_(id, shots, done) {
+function touchCounts_(id, shots, done) {  // id בלבד, לא slug
   var list = projects_(), changed = false;
   for (var i = 0; i < list.length; i++) {
     if (list[i].id !== id) continue;

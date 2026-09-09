@@ -36,9 +36,10 @@ function doPost(e) {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var action = body.action || (body.statuses ? 'statuses' : '');
 
-    if (action === 'add')    return json_({ ok: true, project: addProject_(body.url, body.name) });
+    if (action === 'add')    return json_({ ok: true, project: addProject_(body.url, body.name, body.slug) });
     if (action === 'remove') return json_({ ok: removeProject_(body.p) });
-    if (action === 'rename') return json_({ ok: true, project: renameProject_(body.p, body.name) });
+    if (action === 'rename') return json_({ ok: true, project: renameProject_(body.p, body.name, body.slug) });
+    if (action === 'rebuild') return json_({ ok: true, url: setup() });
 
     if (action === 'statuses') {
       var entry = body.p ? findProject_(body.p) : legacyProject_();
@@ -75,7 +76,7 @@ function loadProject_(id) {
   refreshCounts_(entry, ss, statuses, parsed);
   return {
     project: {
-      id: entry.id, name: entry.name, url: ss.getUrl(),
+      id: entry.id, slug: entry.slug || '', name: entry.name, url: ss.getUrl(),
       sheetName: parsed.sheetName, columns: Object.keys(parsed.columns)
     },
     items: parsed.items,

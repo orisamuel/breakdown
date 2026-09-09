@@ -99,6 +99,43 @@ function api(payload,params){
   });
 }
 
+// ============================================================
+//  ניתוב: לכל ברייקדאון כתובת משלו – #/p/<slug או id>
+//  hash ולא path, כדי שזה יעבוד על GitHub Pages בלי הגדרות שרת.
+// ============================================================
+function routeOf(){
+  var m=String(location.hash||"").match(/^#\/p\/([^\/?&]+)/);
+  if(m)return decodeURIComponent(m[1]);
+  m=String(location.search||"").match(/[?&]p=([^&]+)/);   // תאימות לקישורים ישנים
+  return m?decodeURIComponent(m[1]):null;
+}
+function goTo(key){
+  var t="#/p/"+encodeURIComponent(key);
+  if(location.hash!==t)location.hash=t;
+}
+function goHome(){
+  if(location.hash)location.hash="";
+  else window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
+function shareUrl(key){
+  return location.origin+location.pathname+"#/p/"+encodeURIComponent(key);
+}
+function copyLink(key,cb){
+  var url=shareUrl(key);
+  function done(ok){if(cb)cb(ok);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){done(true);},function(){done(false);});
+  } else {
+    try{
+      var ta=document.createElement("textarea");
+      ta.value=url;ta.style.position="fixed";ta.style.opacity="0";
+      document.body.appendChild(ta);ta.select();
+      var ok=document.execCommand("copy");
+      document.body.removeChild(ta);done(ok);
+    }catch(e){done(false);}
+  }
+}
+
 var btnStyle={padding:"12px",border:"1px solid #1e2d45",borderRadius:"10px",background:"#0f172a",color:"#94a3b8",cursor:"pointer",fontSize:"14px",fontWeight:700};
 var inputStyle={width:"100%",padding:"11px",background:"#0f1929",border:"1px solid #1e2d45",borderRadius:"8px",color:"#e2e8f0",fontSize:"13px",boxSizing:"border-box",outline:"none",display:"block",marginBottom:"10px"};
 
@@ -111,33 +148,42 @@ function Picker(props){
   var s3=useState(""),name=s3[0],setName=s3[1];
   var s4=useState(""),err=s4[0],setErr=s4[1];
   var s5=useState(false),busy=s5[0],setBusy=s5[1];
+  var s6=useState(""),slug=s6[0],setSlug=s6[1];
+  var s7=useState(""),copied=s7[0],setCopied=s7[1];
 
   function submit(){
     if(!url.trim()){setErr("צריך קישור לגוגל-שיט");return;}
     setBusy(true);setErr("");
-    api({action:"add",url:url.trim(),name:name.trim()}).then(function(d){
-      setBusy(false);setAdding(false);setUrl("");setName("");
+    api({action:"add",url:url.trim(),name:name.trim(),slug:slug.trim()}).then(function(d){
+      setBusy(false);setAdding(false);setUrl("");setName("");setSlug("");
       props.onAdded(d.project);
     })["catch"](function(e){setBusy(false);setErr(e.message||"נכשל");});
   }
 
   var cards=props.projects.map(function(p){
     var pct=p.shots?Math.round((p.done/p.shots)*100):0;
+    var key=p.slug||p.id;
     return h("div",{key:p.id,style:{background:"#0f172a",border:"1px solid #1e2d45",borderRadius:"14px",padding:"14px 16px",marginBottom:"10px"}},[
       h("div",{key:"r",style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px"}},[
-        h("div",{key:"l",onClick:function(){props.onOpen(p.id);},style:{flex:1,minWidth:0,cursor:"pointer"}},[
+        h("div",{key:"l",onClick:function(){props.onOpen(key);},style:{flex:1,minWidth:0,cursor:"pointer"}},[
           h("div",{key:"n",style:{fontSize:"15px",fontWeight:800,color:"#f1f5f9",marginBottom:"4px"}},p.name),
-          h("div",{key:"m",style:{fontSize:"11px",color:"#475569"}},p.shots+" שוטים · "+p.done+" בוצעו")
+          h("div",{key:"m",style:{fontSize:"11px",color:"#475569"}},p.shots+" שוטים · "+p.done+" בוצעו"),
+          h("div",{key:"u",style:{fontSize:"10px",color:"#334155",marginTop:"3px",direction:"ltr",textAlign:"right"}},"#/p/"+key)
         ]),
         h("div",{key:"a",style:{display:"flex",gap:"6px",flexShrink:0}},[
+          h("button",{key:"c",title:"העתק קישור לברייקדאון הזה",onClick:function(e){
+            e.stopPropagation();
+            copyLink(key,function(ok){setCopied(ok?p.id:"");setTimeout(function(){setCopied("");},1800);});
+          },style:{background:copied===p.id?"#052e16":"#1e1b4b",border:"1px solid "+(copied===p.id?"#166534":"#4c1d95"),color:copied===p.id?"#4ade80":"#a78bfa",borderRadius:"8px",padding:"6px 9px",fontSize:"12px",cursor:"pointer",lineHeight:1}},copied===p.id?"✓":"🔗"),
           h("a",{key:"s",href:p.url,target:"_blank",rel:"noopener",title:"פתח בגוגל-שיטס",
             style:{background:"#052e16",border:"1px solid #166534",color:"#4ade80",borderRadius:"8px",padding:"6px 9px",fontSize:"13px",textDecoration:"none",lineHeight:1}},"📊"),
-          h("button",{key:"x",title:"הסר מהרשימה",onClick:function(){
+          h("button",{key:"x",title:"הסר מהרשימה",onClick:function(e){
+            e.stopPropagation();
             if(window.confirm('להסיר את "'+p.name+'" מהרשימה?\n(הגוגל-שיט עצמו לא נמחק)'))props.onRemove(p.id);
           },style:{background:"#1a0505",border:"1px solid #7f1d1d",color:"#f87171",borderRadius:"8px",padding:"6px 9px",fontSize:"12px",cursor:"pointer",lineHeight:1}},"✕")
         ])
       ]),
-      h("div",{key:"b",onClick:function(){props.onOpen(p.id);},style:{marginTop:"10px",cursor:"pointer",display:"flex",gap:"9px",alignItems:"center"}},[
+      h("div",{key:"b",onClick:function(){props.onOpen(key);},style:{marginTop:"10px",cursor:"pointer",display:"flex",gap:"9px",alignItems:"center"}},[
         h("div",{key:"bar",style:{flex:1,background:"#060d1a",borderRadius:"3px",height:"5px",overflow:"hidden",border:"1px solid #1e2d45"}},
           h("div",{style:{width:pct+"%",height:"100%",background:"linear-gradient(90deg,#22c55e,#4ade80)"}})),
         h("span",{key:"p",style:{fontSize:"11px",color:"#64748b",fontWeight:700}},pct+"%")
@@ -153,6 +199,7 @@ function Picker(props){
         "הדבק קישור לגוגל-שיט. המערכת מזהה לבד את גליון הברייקדאון ואת שורת הכותרת, ומבינה גם את הפורמט הישן עם התאים הממוזגים."),
       h("input",{key:"u",value:url,onChange:function(e){setUrl(e.target.value);},placeholder:"https://docs.google.com/spreadsheets/d/...",style:inputStyle}),
       h("input",{key:"n",value:name,onChange:function(e){setName(e.target.value);},placeholder:"שם (אופציונלי – ברירת מחדל: שם הקובץ)",style:inputStyle}),
+      h("input",{key:"g",value:slug,onChange:function(e){setSlug(e.target.value);},placeholder:"כתובת לשיתוף באנגלית, למשל astral-hr (אופציונלי)",style:Object.assign({},inputStyle,{direction:"ltr",textAlign:"left"})}),
       err?h("div",{key:"e",style:{color:"#fca5a5",fontSize:"12px",marginBottom:"10px",lineHeight:1.5}},"⚠ "+err):null,
       h("div",{key:"a",style:{display:"flex",gap:"8px"}},[
         h("button",{key:"c",onClick:function(){setAdding(false);setErr("");},style:Object.assign({},btnStyle,{flex:1})},"ביטול"),
@@ -282,6 +329,7 @@ function Board(props){
   var sf=useState("all"),flt=sf[0],setFlt=sf[1];
   var sdf=useState("all"),depF=sdf[0],setDepF=sdf[1];
   var sst=useState("idle"),syncStatus=sst[0],setSyncStatus=sst[1];
+  var sc=useState(false),copied=sc[0],setCopied=sc[1];
   var dirty=useRef(false),timer=useRef(null),latest=useRef({});
   latest.current={statuses:statuses};
 
@@ -299,6 +347,10 @@ function Board(props){
     api({p:pid,statuses:sts}).then(function(){dirty.current=false;setSyncStatus("ok");})
       ["catch"](function(){setSyncStatus("error");});
   }
+  useEffect(function(){
+    document.title=(proj.name?proj.name+" · ":"")+"ברייקדאון";
+    return function(){document.title="ברייקדאון";};
+  },[proj.name]);
   useEffect(function(){save(KI,items);},[items]);
   useEffect(function(){save(KS,statuses);},[statuses]);
   useEffect(function(){pull();},[pid]);
@@ -462,8 +514,12 @@ function Board(props){
   var syncColor=syncStatus==="syncing"?"#fbbf24":syncStatus==="ok"?"#4ade80":syncStatus==="error"?"#f87171":"#7dd3fc";
   var syncTitle=syncStatus==="syncing"?"מסנכרן":syncStatus==="ok"?"מסונכרן":syncStatus==="error"?"שגיאת סנכרון":"מחובר";
 
+  var shareKey=proj.slug||pid;
   var headBtns=[
-    h("span",{key:"set",title:syncTitle,onClick:pull,style:{background:"#0f172a",border:"1px solid "+syncColor,color:syncColor,borderRadius:"8px",padding:"6px 10px",fontSize:"14px",lineHeight:1,cursor:"pointer"}},"☁")
+    h("span",{key:"set",title:syncTitle,onClick:pull,style:{background:"#0f172a",border:"1px solid "+syncColor,color:syncColor,borderRadius:"8px",padding:"6px 10px",fontSize:"14px",lineHeight:1,cursor:"pointer"}},"☁"),
+    h("button",{key:"lk",title:"העתק קישור לברייקדאון הזה",onClick:function(){
+      copyLink(shareKey,function(ok){setCopied(!!ok);setTimeout(function(){setCopied(false);},1800);});
+    },style:{background:copied?"#052e16":"#1e1b4b",border:"1px solid "+(copied?"#166534":"#4c1d95"),color:copied?"#4ade80":"#a78bfa",borderRadius:"8px",padding:"6px 10px",fontSize:"13px",cursor:"pointer",lineHeight:1}},copied?"✓":"🔗")
   ];
   if(proj.url)headBtns.push(h("a",{key:"sh",href:proj.url,target:"_blank",rel:"noopener",title:"פתח בגוגל-שיטס",style:{background:"#052e16",border:"1px solid #166534",color:"#4ade80",borderRadius:"8px",padding:"6px 10px",fontSize:"13px",lineHeight:1,textDecoration:"none"}},"📊"));
   headBtns.push(h("button",{key:"b",onClick:function(){setShowGD(true);},style:{background:"#1e1b4b",border:"1px solid #4c1d95",color:"#a78bfa",borderRadius:"8px",padding:"8px 12px",fontSize:"12px",fontWeight:700,cursor:"pointer"}},"⏰"));
@@ -502,7 +558,7 @@ function Board(props){
 // ============================================================
 function App(){
   var sp=useState(function(){return ls("bd_projects",[]);}),projects=sp[0],setProjects=sp[1];
-  var ss=useState(function(){return ls("bd_sel",null);}),sel=ss[0],setSel=ss[1];
+  var ss=useState(routeOf),sel=ss[0],setSel=ss[1];
   var sl=useState(true),loading=sl[0],setLoading=sl[1];
   var se=useState(""),err=se[0],setErr=se[1];
 
@@ -514,11 +570,16 @@ function App(){
     })["catch"](function(e){setLoading(false);setErr(e.message||"נכשל");return null;});
   }
   useEffect(function(){refresh();},[]);
-  useEffect(function(){save("bd_sel",sel);},[sel]);
+  // כפתורי אחורה/קדימה של הדפדפן עובדים דרך ה-hash
+  useEffect(function(){
+    function onHash(){setSel(routeOf());}
+    window.addEventListener("hashchange",onHash);
+    return function(){window.removeEventListener("hashchange",onHash);};
+  },[]);
 
   if(sel){
-    var meta=null;projects.forEach(function(p){if(p.id===sel)meta=p;});
-    return h(Board,{pid:sel,meta:meta,onBack:function(){setSel(null);refresh();}});
+    var meta=null;projects.forEach(function(p){if(p.id===sel||p.slug===sel)meta=p;});
+    return h(Board,{key:sel,pid:sel,meta:meta,onBack:function(){goHome();refresh();}});
   }
   if(loading&&!projects.length){
     return h("div",{className:"loader"},[
@@ -534,7 +595,7 @@ function App(){
     ]);
   }
   return h(Picker,{projects:projects,
-    onOpen:function(id){setSel(id);},
+    onOpen:function(key){goTo(key);},
     onAdded:function(){refresh();},
     onRemove:function(id){
       setProjects(projects.filter(function(p){return p.id!==id;}));
