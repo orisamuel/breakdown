@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
+<meta name="theme-color" content="#060d1a"/>
+<title>ברייקדאון</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎬%3C/text%3E%3C/svg%3E"/>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:#060d1a;min-height:100vh}
+body{font-family:'Helvetica Neue',Arial,sans-serif;color:#e2e8f0}
+input[type=range]{accent-color:#fbbf24;width:100%}
+button:active{transform:scale(0.97)}
+textarea,input,button{font-family:inherit}
+.loader{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:16px}
+.loader-row{display:flex;gap:8px}
+.dot{width:10px;height:10px;background:#7c3aed;border-radius:50%;animation:pulse 1.4s infinite ease-in-out both}
+.dot:nth-child(1){animation-delay:-0.32s}
+.dot:nth-child(2){animation-delay:-0.16s}
+@keyframes pulse{0%,80%,100%{transform:scale(0);opacity:.5}40%{transform:scale(1);opacity:1}}
+.loader-text{color:#475569;font-size:13px;letter-spacing:2px}
+::-webkit-scrollbar{height:4px;width:4px}
+::-webkit-scrollbar-thumb{background:#1e2d45;border-radius:2px}
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="loader">
+    <div class="loader-row"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    <div class="loader-text">טוען...</div>
+  </div>
+</div>
+<script>
+window.onerror=function(msg,src,line,col,err){
+  var el=document.getElementById("root");
+  if(el)el.innerHTML='<pre style="color:#fca5a5;background:#1a0505;padding:16px;margin:16px;border-radius:8px;font-size:12px;white-space:pre-wrap;direction:ltr;text-align:left">SCRIPT ERROR:\n'+msg+'\nLine '+line+':'+col+(err&&err.stack?'\n\n'+err.stack:'')+'</pre>';
+  return true;
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script>
+if(!window.React||!window.ReactDOM){
+  document.getElementById("root").innerHTML='<div style="color:#fca5a5;padding:20px">React did not load</div>';
+  throw new Error("React not loaded");
+}
+var h=React.createElement,useState=React.useState,useEffect=React.useEffect,useRef=React.useRef;
+
+// ============================================================
+//  כתובת ה-Web App של האפסקריפט. אחרי clasp deploy מדביקים כאן.
+// ============================================================
+var SYNC_URL="https://script.google.com/macros/s/AKfycbwQecfXHg1K95NrYLBMyx2Oc1JfYjgqQ5gB-ahCtw0M4oh8V-YwhsJs3Xx_oCsG86tF/exec";
+
+var ST={PENDING:"pending",DONE:"done",PARTIAL:"partial",DELAYED:"delayed",SKIPPED:"skipped"};
+var SM={
+  pending:{label:"ממתין",emoji:"⏳",bg:"#1e293b",fg:"#94a3b8",border:"#334155",pill:"#0f172a"},
+  done:{label:"בוצע",emoji:"✅",bg:"#052e16",fg:"#4ade80",border:"#166534",pill:"#14532d"},
+  partial:{label:"חלקית",emoji:"🔶",bg:"#1c1400",fg:"#fbbf24",border:"#854d0e",pill:"#78350f"},
+  delayed:{label:"נדחה",emoji:"⏰",bg:"#1e1b4b",fg:"#a78bfa",border:"#4c1d95",pill:"#3730a3"},
+  skipped:{label:"לא בוצע",emoji:"✕",bg:"#1a0505",fg:"#f87171",border:"#991b1b",pill:"#7f1d1d"}
+};
+var DEPM={
+  "שחקנים":{fg:"#f9a8d4",bg:"#3b0764",bd:"#9d174d",short:"שחקן"},
+  "שחקנים + עובדים":{fg:"#fdba74",bg:"#2e1600",bd:"#9a3412",short:"שחקן+עובדים"},
+  "עובדים":{fg:"#6ee7b7",bg:"#022c22",bd:"#047857",short:"עובדים"},
+  "נציג הנהלה":{fg:"#c4b5fd",bg:"#1e1b4b",bd:"#5b21b6",short:"הנהלה"},
+  "ביוטי / ללא קאסט":{fg:"#94a3b8",bg:"#0f172a",bd:"#334155",short:"ביוטי"},
+  "עובדים / ביוטי":{fg:"#bef264",bg:"#1a2e05",bd:"#4d7c0f",short:"עובדים/ביוטי"}
+};
+function depOf(d){return DEPM[d]||{fg:"#94a3b8",bg:"#0f172a",bd:"#1e2d45",short:d||"—"};}
+var HOTELC={"מלכת שבא":"#f472b6","אריאה":"#34d399","וילג׳":"#38bdf8","וילג":"#38bdf8",
+            "מאריס":"#fb923c","נירוונה":"#a78bfa","פאלמה":"#fbbf24"};
+function hotelColor(s){
+  if(HOTELC[s])return HOTELC[s];
+  if(!s||s==="-")return "#64748b";
+  if(s.indexOf("חוץ")===0)return "#7dd3fc";
+  if(s.indexOf("בית")===0)return "#c084fc";
+  return "#64748b";
+}
+function parseM(s){if(!s)return 99999;var head=String(s).split("-")[0].trim();if(head.indexOf(":")<0)return 99998;var p=head.split(":");return (parseInt(p[0],10)||0)*60+(parseInt(p[1],10)||0);}
+function addM(s,d){
+  if(!s||String(s).indexOf(":")<0)return s;
+  function fmt(t){var hh=Math.floor(t/60)%24,mm=t%60;return hh+":"+(mm<10?"0"+mm:""+mm);}
+  function pt(t){var p=t.trim().split(":");return (parseInt(p[0],10)||0)*60+(parseInt(p[1],10)||0);}
+  var parts=String(s).split("-");
+  return parts.length===2?fmt(pt(parts[0])+d)+"-"+fmt(pt(parts[1])+d):fmt(pt(parts[0])+d);
+}
+function ls(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+function api(payload,params){
+  var u=SYNC_URL;
+  if(params){var q=[];for(var k in params)q.push(encodeURIComponent(k)+"="+encodeURIComponent(params[k]));u+="?"+q.join("&");}
+  var opt=payload?{method:"POST",body:JSON.stringify(payload)}:undefined;
+  return fetch(u,opt).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.error)throw new Error(d.error);
+    return d;
+  });
+}
+
+var btnStyle={padding:"12px",border:"1px solid #1e2d45",borderRadius:"10px",background:"#0f172a",color:"#94a3b8",cursor:"pointer",fontSize:"14px",fontWeight:700};
+var inputStyle={width:"100%",padding:"11px",background:"#0f1929",border:"1px solid #1e2d45",borderRadius:"8px",color:"#e2e8f0",fontSize:"13px",boxSizing:"border-box",outline:"none",display:"block",marginBottom:"10px"};
+
+// ============================================================
+//  מסך בחירת ברייקדאון
+// ============================================================
+function Picker(props){
+  var s1=useState(false),adding=s1[0],setAdding=s1[1];
+  var s2=useState(""),url=s2[0],setUrl=s2[1];
+  var s3=useState(""),name=s3[0],setName=s3[1];
+  var s4=useState(""),err=s4[0],setErr=s4[1];
+  var s5=useState(false),busy=s5[0],setBusy=s5[1];
+
+  function submit(){
+    if(!url.trim()){setErr("צריך קישור לגוגל-שיט");return;}
+    setBusy(true);setErr("");
+    api({action:"add",url:url.trim(),name:name.trim()}).then(function(d){
+      setBusy(false);setAdding(false);setUrl("");setName("");
+      props.onAdded(d.project);
+    })["catch"](function(e){setBusy(false);setErr(e.message||"נכשל");});
+  }
+
+  var cards=props.projects.map(function(p){
+    var pct=p.shots?Math.round((p.done/p.shots)*100):0;
+    return h("div",{key:p.id,style:{background:"#0f172a",border:"1px solid #1e2d45",borderRadius:"14px",padding:"14px 16px",marginBottom:"10px"}},[
+      h("div",{key:"r",style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px"}},[
+        h("div",{key:"l",onClick:function(){props.onOpen(p.id);},style:{flex:1,minWidth:0,cursor:"pointer"}},[
+          h("div",{key:"n",style:{fontSize:"15px",fontWeight:800,color:"#f1f5f9",marginBottom:"4px"}},p.name),
+          h("div",{key:"m",style:{fontSize:"11px",color:"#475569"}},p.shots+" שוטים · "+p.done+" בוצעו")
+        ]),
+        h("div",{key:"a",style:{display:"flex",gap:"6px",flexShrink:0}},[
+          h("a",{key:"s",href:p.url,target:"_blank",rel:"noopener",title:"פתח בגוגל-שיטס",
+            style:{background:"#052e16",border:"1px solid #166534",color:"#4ade80",borderRadius:"8px",padding:"6px 9px",fontSize:"13px",textDecoration:"none",lineHeight:1}},"📊"),
+          h("button",{key:"x",title:"הסר מהרשימה",onClick:function(){
+            if(window.confirm('להסיר את "'+p.name+'" מהרשימה?\n(הגוגל-שיט עצמו לא נמחק)'))props.onRemove(p.id);
+          },style:{background:"#1a0505",border:"1px solid #7f1d1d",color:"#f87171",borderRadius:"8px",padding:"6px 9px",fontSize:"12px",cursor:"pointer",lineHeight:1}},"✕")
+        ])
+      ]),
+      h("div",{key:"b",onClick:function(){props.onOpen(p.id);},style:{marginTop:"10px",cursor:"pointer",display:"flex",gap:"9px",alignItems:"center"}},[
+        h("div",{key:"bar",style:{flex:1,background:"#060d1a",borderRadius:"3px",height:"5px",overflow:"hidden",border:"1px solid #1e2d45"}},
+          h("div",{style:{width:pct+"%",height:"100%",background:"linear-gradient(90deg,#22c55e,#4ade80)"}})),
+        h("span",{key:"p",style:{fontSize:"11px",color:"#64748b",fontWeight:700}},pct+"%")
+      ])
+    ]);
+  });
+
+  var addBlock;
+  if(adding){
+    addBlock=h("div",{style:{background:"#0f172a",border:"1px solid #4c1d95",borderRadius:"14px",padding:"16px"}},[
+      h("div",{key:"t",style:{fontSize:"14px",fontWeight:800,color:"#c4b5fd",marginBottom:"4px"}},"הוספת ברייקדאון"),
+      h("div",{key:"d",style:{fontSize:"12px",color:"#64748b",marginBottom:"12px",lineHeight:1.6}},
+        "הדבק קישור לגוגל-שיט. המערכת מזהה לבד את גליון הברייקדאון ואת שורת הכותרת, ומבינה גם את הפורמט הישן עם התאים הממוזגים."),
+      h("input",{key:"u",value:url,onChange:function(e){setUrl(e.target.value);},placeholder:"https://docs.google.com/spreadsheets/d/...",style:inputStyle}),
+      h("input",{key:"n",value:name,onChange:function(e){setName(e.target.value);},placeholder:"שם (אופציונלי – ברירת מחדל: שם הקובץ)",style:inputStyle}),
+      err?h("div",{key:"e",style:{color:"#fca5a5",fontSize:"12px",marginBottom:"10px",lineHeight:1.5}},"⚠ "+err):null,
+      h("div",{key:"a",style:{display:"flex",gap:"8px"}},[
+        h("button",{key:"c",onClick:function(){setAdding(false);setErr("");},style:Object.assign({},btnStyle,{flex:1})},"ביטול"),
+        h("button",{key:"o",disabled:busy,onClick:submit,style:{flex:2,padding:"12px",background:busy?"#3b3b5b":"#7c3aed",border:"none",borderRadius:"10px",color:"#fff",fontWeight:800,cursor:busy?"default":"pointer",fontSize:"14px"}},busy?"בודק את הקובץ...":"הוסף")
+      ])
+    ]);
+  } else {
+    addBlock=h("button",{onClick:function(){setAdding(true);},style:{width:"100%",padding:"14px",background:"#1e1b4b",border:"1px dashed #4c1d95",borderRadius:"14px",color:"#a78bfa",fontSize:"14px",fontWeight:700,cursor:"pointer"}},"＋ הוסף ברייקדאון מגוגל-שיטס");
+  }
+
+  return h("div",{dir:"rtl",style:{minHeight:"100vh",background:"#060d1a"}},
+    h("div",{style:{maxWidth:"620px",margin:"0 auto",padding:"28px 16px 60px"}},[
+      h("div",{key:"h",style:{marginBottom:"22px"}},[
+        h("div",{key:"s",style:{fontSize:"11px",letterSpacing:"3px",color:"#475569",marginBottom:"3px"}},"PRODUCTION SCHEDULE"),
+        h("h1",{key:"t",style:{margin:0,fontSize:"24px",fontWeight:800,color:"#f1f5f9"}},"ברייקדאון 🎬"),
+        h("div",{key:"d",style:{fontSize:"12px",color:"#475569",marginTop:"5px"}},props.projects.length?"בחר ברייקדאון או הוסף חדש":"אין עוד ברייקדאונים – הוסף אחד למטה")
+      ]),
+      h("div",{key:"c"},cards),
+      h("div",{key:"a",style:{marginTop:"6px"}},addBlock)
+    ])
+  );
+}
+
+// ============================================================
+//  מודאלים
+// ============================================================
+function GDModal(props){
+  var s=useState(30),mins=s[0],setMins=s[1];
+  var btns=[15,30,45,60,90,120].map(function(m){
+    var on=mins===m;
+    return h("button",{key:m,onClick:function(){setMins(m);},style:{flex:"1 0 calc(33% - 4px)",padding:"10px 4px",border:"1px solid "+(on?"#7c3aed":"#1e1b4b"),borderRadius:"8px",background:on?"#7c3aed":"#1e1b4b",color:on?"white":"#a78bfa",cursor:"pointer",fontSize:"13px",fontWeight:700}},m<60?(m+" דק׳"):((m/60)+" שעה"));
+  });
+  return h("div",{onClick:function(e){if(e.target===e.currentTarget)props.onClose();},style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}},
+    h("div",{dir:"rtl",style:{background:"#0f172a",border:"1px solid #4c1d95",borderRadius:"16px",padding:"24px",width:"100%",maxWidth:"340px"}},[
+      h("h2",{key:"t",style:{margin:"0 0 6px",fontSize:"18px",color:"#c4b5fd"}},"⏰ דחיית לו״ז"),
+      h("p",{key:"d",style:{margin:"0 0 16px",fontSize:"13px",color:"#64748b"}},"כל הפריטים ביום הנוכחי שטרם בוצעו ידחו בהתאמה. השעות בשיט לא משתנות."),
+      h("div",{key:"g",style:{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"14px"}},btns),
+      h("div",{key:"a",style:{display:"flex",gap:"8px"}},[
+        h("button",{key:"c",onClick:props.onClose,style:Object.assign({},btnStyle,{flex:1})},"ביטול"),
+        h("button",{key:"ok",onClick:function(){props.onConfirm(mins);},style:{flex:2,padding:"12px",background:"#7c3aed",border:"none",borderRadius:"10px",color:"white",fontWeight:800,cursor:"pointer",fontSize:"14px"}},"דחה ב-"+(mins<60?(mins+" דק׳"):((mins/60)+" שעה")))
+      ])
+    ])
+  );
+}
+
+function Modal(props){
+  var item=props.item,ist=props.ist||{};
+  var s1=useState(ist.status||ST.PENDING),st=s1[0],setSt=s1[1];
+  var s2=useState(ist.completionPct||50),pct=s2[0],setPct=s2[1];
+  var s3=useState(ist.reason||""),reason=s3[0],setReason=s3[1];
+  var s4=useState(ist.notes||""),notes=s4[0],setNotes=s4[1];
+  var s5=useState(false),dOpen=s5[0],setDOpen=s5[1];
+  var s6=useState(30),dMins=s6[0],setDMins=s6[1];
+  var ac=hotelColor(item.hotel),dep=depOf(item.dep);
+
+  var tags=[];
+  if(item.dep)tags.push(h("span",{key:"dep",style:{fontSize:"10px",color:dep.fg,background:dep.bg,padding:"2px 8px",borderRadius:"8px",border:"1px solid "+dep.bd,fontWeight:800}},item.dep));
+  if(item.hotel&&item.hotel!=="-")tags.push(h("span",{key:"h",style:{fontSize:"10px",color:ac,fontWeight:800,background:"rgba(255,255,255,0.05)",padding:"2px 8px",borderRadius:"8px",border:"1px solid "+ac+"40"}},item.hotel));
+  if(props.ts)tags.push(h("span",{key:"t",style:{fontSize:"10px",color:"#7dd3fc",background:"#0c1a2e",padding:"2px 8px",borderRadius:"8px"}},"⏰ "+props.ts));
+  if(item.loc)tags.push(h("span",{key:"l",style:{fontSize:"10px",color:"#94a3b8",background:"#1e293b",padding:"2px 8px",borderRadius:"8px"}},"📍 "+item.loc));
+  if(item.type)tags.push(h("span",{key:"ty",style:{fontSize:"10px",color:"#64748b",background:"#0f172a",padding:"2px 8px",borderRadius:"8px",border:"1px solid #1e2d45"}},"#"+item.type));
+
+  var hd=[h("div",{key:"tg",style:{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"8px"}},tags)];
+  if(item.vid)hd.push(h("div",{key:"v",style:{fontSize:"11px",color:"#a78bfa",fontWeight:800,marginBottom:"4px"}},"🎬 "+item.vid));
+  hd.push(h("p",{key:"sc",style:{margin:0,fontSize:"14px",color:"#e2e8f0",lineHeight:1.6}},item.script));
+  if(item.cast&&item.cast!=="—"&&item.cast!=="-")hd.push(h("p",{key:"ca",style:{margin:"8px 0 0",fontSize:"12px",color:"#94a3b8"}},"👤 "+item.cast));
+  if(item.lc)hd.push(h("p",{key:"lc",style:{margin:"4px 0 0",fontSize:"11px",color:"#4ade80",lineHeight:1.5}},"🎯 לקוח: "+item.lc));
+  if(item.lp)hd.push(h("p",{key:"lp",style:{margin:"2px 0 0",fontSize:"11px",color:"#fbbf24",lineHeight:1.5}},"⚙️ הפקה: "+item.lp));
+  if(item.wardrobe)hd.push(h("p",{key:"w",style:{margin:"2px 0 0",fontSize:"11px",color:"#f472b6",lineHeight:1.5}},"👕 "+item.wardrobe));
+  if(item.notes)hd.push(h("p",{key:"n",style:{margin:"6px 0 0",fontSize:"11px",color:"#a78bfa",fontStyle:"italic",lineHeight:1.5}},"📝 "+item.notes));
+
+  var stBtns=Object.keys(SM).map(function(val){
+    var m2=SM[val],on=st===val;
+    return h("button",{key:val,onClick:function(){setSt(val);},style:{padding:"10px 8px",border:"1px solid "+(on?m2.border:"#1e2d45"),borderRadius:"8px",background:on?m2.bg:"#0f172a",color:on?m2.fg:"#475569",cursor:"pointer",fontSize:"12px",fontWeight:700,outline:on?"2px solid "+m2.border:"none",outlineOffset:"1px"}},m2.emoji+" "+m2.label);
+  });
+
+  var body=[h("div",{key:"hd",style:{marginBottom:"12px"}},hd),
+            h("div",{key:"sep",style:{height:"1px",background:"#1e2d45",margin:"12px 0"}}),
+            h("div",{key:"stg",style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"7px",marginBottom:"14px"}},stBtns)];
+  if(st===ST.PARTIAL)body.push(h("div",{key:"pct",style:{marginBottom:"14px",background:"#1c1400",border:"1px solid #854d0e",borderRadius:"8px",padding:"12px"}},[
+    h("div",{key:"l",style:{fontSize:"12px",color:"#fbbf24",fontWeight:700,marginBottom:"8px"}},"כמה בוצע? "+pct+"%"),
+    h("input",{key:"i",type:"range",min:"10",max:"90",step:"10",value:pct,onChange:function(e){setPct(Number(e.target.value));}})
+  ]));
+  body.push(h("div",{key:"rl",style:{fontSize:"11px",color:"#475569",fontWeight:700,marginBottom:"5px"}},"סיבה"));
+  body.push(h("textarea",{key:"rt",value:reason,onChange:function(e){setReason(e.target.value);},placeholder:"למה? מה קרה?",style:Object.assign({},inputStyle,{resize:"vertical",minHeight:"52px"})}));
+  body.push(h("div",{key:"nl",style:{fontSize:"11px",color:"#475569",fontWeight:700,marginBottom:"5px"}},"הערות מהסט"));
+  body.push(h("textarea",{key:"nt",value:notes,onChange:function(e){setNotes(e.target.value);},placeholder:"הערות נוספות...",style:Object.assign({},inputStyle,{resize:"vertical",minHeight:"52px",marginBottom:"14px"})}));
+
+  var dk=[h("button",{key:"tb",onClick:function(){setDOpen(!dOpen);},style:{background:"none",border:"none",color:"#a78bfa",fontSize:"12px",fontWeight:700,cursor:"pointer",padding:0}},"⏰ דחה פריט זה בנפרד "+(dOpen?"▲":"▼"))];
+  if(dOpen){
+    var dbtns=[15,30,45,60,90,120].map(function(m){
+      var on=dMins===m;
+      return h("button",{key:m,onClick:function(){setDMins(m);},style:{padding:"5px 10px",border:"1px solid "+(on?"#7c3aed":"#2e1a6b"),borderRadius:"6px",background:on?"#7c3aed":"transparent",color:on?"#fff":"#a78bfa",cursor:"pointer",fontSize:"11px"}},m<60?(m+"ד"):((m/60)+"ש"));
+    });
+    dk.push(h("div",{key:"dp",style:{marginTop:"10px",background:"#1e1b4b",border:"1px solid #4c1d95",borderRadius:"8px",padding:"12px"}},[
+      h("div",{key:"r",style:{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"10px"}},dbtns),
+      h("button",{key:"go",onClick:function(){props.onDelay(dMins);},style:{width:"100%",padding:"9px",background:"#7c3aed",border:"none",borderRadius:"8px",color:"white",fontWeight:700,cursor:"pointer",fontSize:"13px"}},"דחה ב-"+(dMins<60?(dMins+" דקות"):((dMins/60)+" שעה")))
+    ]));
+  }
+  body.push(h("div",{key:"ds",style:{marginBottom:"16px"}},dk));
+  body.push(h("div",{key:"ab",style:{display:"flex",gap:"8px"}},[
+    h("button",{key:"cx",onClick:props.onClose,style:Object.assign({},btnStyle,{flex:1,padding:"13px"})},"ביטול"),
+    h("button",{key:"sv",onClick:function(){var p={status:st,reason:reason,notes:notes};if(st===ST.PARTIAL)p.completionPct=pct;props.onSave(p);},style:{flex:2,padding:"13px",background:ac,border:"none",borderRadius:"10px",color:"#000",fontWeight:800,cursor:"pointer",fontSize:"14px"}},"שמור ✓")
+  ]));
+
+  return h("div",{onClick:function(e){if(e.target===e.currentTarget)props.onClose();},style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}},
+    h("div",{dir:"rtl",style:{background:"#0f172a",borderRadius:"20px 20px 0 0",border:"1px solid #1e2d45",borderBottom:"none",padding:"0 0 24px",width:"100%",maxWidth:"600px",maxHeight:"92vh",overflowY:"auto"}},[
+      h("div",{key:"handle",style:{padding:"12px 0 0",display:"flex",justifyContent:"center"}},h("div",{style:{width:"36px",height:"4px",background:"#1e2d45",borderRadius:"2px"}})),
+      h("div",{key:"bar",style:{height:"3px",background:"linear-gradient(90deg,"+ac+",transparent)",margin:"12px 0 0"}}),
+      h("div",{key:"body",style:{padding:"16px 18px 0"}},body)
+    ])
+  );
+}
+
+// ============================================================
+//  לוח המעקב של ברייקדאון בודד
+// ============================================================
+function Board(props){
+  var pid=props.pid;
+  var KS="bd_st_"+pid, KI="bd_it_"+pid;
+  var si=useState(function(){return ls(KI,[]);}),items=si[0],setItems=si[1];
+  var ss=useState(function(){return ls(KS,{});}),statuses=ss[0],setStatuses=ss[1];
+  var sp=useState(props.meta||{}),proj=sp[0],setProj=sp[1];
+  var sd=useState(""),day=sd[0],setDay=sd[1];
+  var sel=useState(null),selItem=sel[0],setSelItem=sel[1];
+  var sgd=useState(false),showGD=sgd[0],setShowGD=sgd[1];
+  var sf=useState("all"),flt=sf[0],setFlt=sf[1];
+  var sdf=useState("all"),depF=sdf[0],setDepF=sdf[1];
+  var sst=useState("idle"),syncStatus=sst[0],setSyncStatus=sst[1];
+  var dirty=useRef(false),timer=useRef(null),latest=useRef({});
+  latest.current={statuses:statuses};
+
+  function pull(){
+    if(dirty.current)return;
+    setSyncStatus("syncing");
+    api(null,{p:pid}).then(function(d){
+      if(dirty.current){setSyncStatus("ok");return;}
+      setItems(d.items||[]);setStatuses(d.statuses||{});setProj(d.project||{});
+      setSyncStatus("ok");
+    })["catch"](function(){setSyncStatus("error");});
+  }
+  function push(sts){
+    setSyncStatus("syncing");
+    api({p:pid,statuses:sts}).then(function(){dirty.current=false;setSyncStatus("ok");})
+      ["catch"](function(){setSyncStatus("error");});
+  }
+  useEffect(function(){save(KI,items);},[items]);
+  useEffect(function(){save(KS,statuses);},[statuses]);
+  useEffect(function(){pull();},[pid]);
+  useEffect(function(){
+    if(!dirty.current)return;
+    if(timer.current)clearTimeout(timer.current);
+    timer.current=setTimeout(function(){push(statuses);},1500);
+    return function(){if(timer.current)clearTimeout(timer.current);};
+  },[statuses]);
+  useEffect(function(){
+    var t=setInterval(function(){if(dirty.current)push(latest.current.statuses);else pull();},15000);
+    return function(){clearInterval(t);};
+  },[pid]);
+
+  var shots=items.filter(function(i){return !i.isBreak;});
+  function tsOf(it){var s=statuses[it.id];return (s&&s.tsOverride)||it.ts||"";}
+  function stOf(id){return (statuses[id]&&statuses[id].status)||ST.PENDING;}
+
+  var days=[];items.forEach(function(i){if(i.day&&days.indexOf(i.day)<0)days.push(i.day);});
+  var curDay=day&&days.indexOf(day)>=0?day:(days[0]||"");
+  useEffect(function(){if(days.length&&!day)setDay(days[0]);},[items.length]);
+
+  function upSt(id,patch){
+    dirty.current=true;
+    setStatuses(function(p){var n=Object.assign({},p);n[id]=Object.assign({},p[id]||{},patch);return n;});
+  }
+  function delayDay(m){
+    dirty.current=true;
+    setStatuses(function(p){
+      var n=Object.assign({},p);
+      shots.forEach(function(it){
+        if(curDay&&it.day!==curDay)return;
+        var s=(n[it.id]&&n[it.id].status)||ST.PENDING;
+        if(s!==ST.PENDING&&s!==ST.PARTIAL)return;
+        var base=(n[it.id]&&n[it.id].tsOverride)||it.ts;
+        if(base)n[it.id]=Object.assign({},n[it.id]||{},{tsOverride:addM(base,m)});
+      });
+      return n;
+    });
+    setShowGD(false);
+  }
+  function delayOne(id,m){
+    dirty.current=true;
+    setStatuses(function(p){
+      var n=Object.assign({},p),it=null;
+      shots.forEach(function(x){if(x.id===id)it=x;});
+      var base=(n[id]&&n[id].tsOverride)||(it?it.ts:"");
+      n[id]=Object.assign({},n[id]||{},{tsOverride:addM(base,m),status:ST.DELAYED});
+      return n;
+    });
+  }
+
+  if(!items.length){
+    return h("div",{dir:"rtl",style:{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"14px",padding:"24px",textAlign:"center"}},[
+      h("div",{key:"e",style:{fontSize:"38px"}},syncStatus==="error"?"⚠️":"🎬"),
+      h("div",{key:"t",style:{fontSize:"15px",color:"#94a3b8"}},syncStatus==="error"?"לא הצלחתי לטעון את הברייקדאון":"טוען מהגוגל-שיט..."),
+      h("div",{key:"a",style:{display:"flex",gap:"8px"}},[
+        h("button",{key:"r",onClick:pull,style:Object.assign({},btnStyle,{padding:"10px 18px"})},"נסה שוב"),
+        h("button",{key:"b",onClick:props.onBack,style:Object.assign({},btnStyle,{padding:"10px 18px"})},"חזרה")
+      ])
+    ]);
+  }
+
+  var total=shots.length;
+  var done=shots.filter(function(i){return stOf(i.id)===ST.DONE;}).length;
+  var partial=shots.filter(function(i){return stOf(i.id)===ST.PARTIAL;}).length;
+  var pct=total?Math.round(((done+partial*0.5)/total)*100):0;
+
+  var dayItems=items.filter(function(i){return curDay?i.day===curDay:true;});
+  var slots=[];dayItems.forEach(function(i){if(i.isBreak)return;var t=tsOf(i);if(slots.indexOf(t)<0)slots.push(t);});
+  slots.sort(function(a,b){return parseM(a)-parseM(b);});
+
+  function passes(i){
+    if(flt!=="all"&&stOf(i.id)!==flt)return false;
+    if(depF!=="all"&&i.dep!==depF)return false;
+    return true;
+  }
+
+  var dayTabs=days.map(function(d){
+    var dc=shots.filter(function(i){return i.day===d;}).length;
+    var dd=shots.filter(function(i){return i.day===d&&stOf(i.id)===ST.DONE;}).length;
+    var act=curDay===d;
+    return h("button",{key:d,onClick:function(){setDay(d);},style:{flex:"1 0 auto",padding:"10px 12px",border:"none",background:"none",cursor:"pointer",borderBottom:act?"2px solid #7c3aed":"2px solid transparent",color:act?"#c4b5fd":"#475569",fontWeight:act?800:500,fontSize:"13px",whiteSpace:"nowrap"}},
+      [d,h("div",{key:"c",style:{fontSize:"9px",color:act?"#7c3aed":"#334155",marginTop:"1px"}},dd+"/"+dc)]);
+  });
+
+  var fltDefs=[["all","הכל","#475569"]].concat(Object.keys(SM).map(function(k){return [k,SM[k].label,SM[k].border];}));
+  var fltPills=fltDefs.map(function(def){
+    var on=flt===def[0];
+    return h("button",{key:def[0],onClick:function(){setFlt(def[0]);},style:{padding:"3px 10px",borderRadius:"20px",border:"1px solid "+(on?def[2]:"#1e2d45"),background:on?def[2]:"transparent",color:on?"#fff":"#64748b",fontSize:"11px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},def[1]);
+  });
+
+  var depsPresent=[];shots.forEach(function(i){if(i.dep&&depsPresent.indexOf(i.dep)<0)depsPresent.push(i.dep);});
+  var depRow=null;
+  if(depsPresent.length>1){
+    var depPills=[h("button",{key:"all",onClick:function(){setDepF("all");},style:{padding:"3px 10px",borderRadius:"20px",border:"1px solid "+(depF==="all"?"#475569":"#1e2d45"),background:depF==="all"?"#475569":"transparent",color:depF==="all"?"#fff":"#64748b",fontSize:"11px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},"כל הקאסט")]
+      .concat(depsPresent.map(function(d){
+        var m=depOf(d),on=depF===d;
+        return h("button",{key:d,onClick:function(){setDepF(on?"all":d);},style:{padding:"3px 10px",borderRadius:"20px",border:"1px solid "+m.bd,background:on?m.bd:"transparent",color:on?"#fff":m.fg,fontSize:"11px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}},m.short);
+      }));
+    depRow=h("div",{key:"dep",style:{padding:"7px 12px",display:"flex",gap:"6px",overflowX:"auto",borderTop:"1px solid #1e2d45"}},depPills);
+  }
+
+  // מקטעים (ארוחות/מעברים) לפי השעה שלהם
+  var breaksHere=dayItems.filter(function(i){return i.isBreak;});
+
+  var blocks=slots.map(function(slot){
+    var all=dayItems.filter(function(i){return !i.isBreak&&tsOf(i)===slot;});
+    var shown=all.filter(passes);
+    if(!shown.length)return null;
+    var cards=shown.map(function(item){
+      var ist=statuses[item.id]||{},st=ist.status||ST.PENDING,m2=SM[st];
+      var ac=hotelColor(item.hotel),dep=depOf(item.dep),isDone=st===ST.DONE;
+      var tags=[];
+      if(item.dep)tags.push(h("span",{key:"dep",style:{fontSize:"9px",background:dep.bg,border:"1px solid "+dep.bd,color:dep.fg,padding:"1px 7px",borderRadius:"10px",fontWeight:800}},dep.short));
+      if(item.hotel&&item.hotel!=="-")tags.push(h("span",{key:"h",style:{fontSize:"10px",background:"rgba(255,255,255,0.06)",border:"1px solid "+ac+"40",color:ac,padding:"1px 7px",borderRadius:"10px",fontWeight:700}},item.hotel));
+      if(item.loc)tags.push(h("span",{key:"l",style:{fontSize:"10px",background:"rgba(255,255,255,0.04)",border:"1px solid #1e2d45",color:"#64748b",padding:"1px 7px",borderRadius:"10px"}},"📍 "+item.loc));
+      if(item.type)tags.push(h("span",{key:"t",style:{fontSize:"10px",background:"rgba(255,255,255,0.04)",border:"1px solid #1e2d45",color:"#475569",padding:"1px 7px",borderRadius:"10px"}},"#"+item.type));
+      if(item.lp)tags.push(h("span",{key:"p",style:{fontSize:"10px",background:"#1a0f00",border:"1px solid #92400e",color:"#fbbf24",padding:"1px 7px",borderRadius:"10px"}},"⚙️ "+item.lp));
+      if(item.lc)tags.push(h("span",{key:"c",style:{fontSize:"10px",background:"#001a0f",border:"1px solid #166534",color:"#4ade80",padding:"1px 7px",borderRadius:"10px"}},"🎯 "+item.lc));
+
+      var lk=[h("div",{key:"tg",style:{display:"flex",flexWrap:"wrap",gap:"4px",marginBottom:"6px"}},tags)];
+      if(item.vid)lk.push(h("div",{key:"v",style:{fontSize:"10px",color:"#7c3aed",fontWeight:800,marginBottom:"3px"}},item.vid));
+      lk.push(h("p",{key:"sc",style:{margin:"0 0 4px",fontSize:"13px",color:isDone?"#475569":"#cbd5e1",lineHeight:1.5,textDecoration:isDone?"line-through":"none"}},item.script));
+      if(item.cast&&item.cast!=="—"&&item.cast!=="-")lk.push(h("p",{key:"ca",style:{margin:0,fontSize:"11px",color:"#475569"}},"👤 "+item.cast));
+      if(ist.notes)lk.push(h("p",{key:"n",style:{margin:"4px 0 0",fontSize:"11px",color:"#a78bfa",fontStyle:"italic"}},"📝 "+ist.notes));
+      if(ist.reason)lk.push(h("p",{key:"r",style:{margin:"2px 0 0",fontSize:"11px",color:"#fbbf24"}},"💬 "+ist.reason));
+
+      var rk=[h("span",{key:"b",style:{fontSize:"11px",fontWeight:700,padding:"3px 8px",borderRadius:"6px",background:m2.pill,color:m2.fg,whiteSpace:"nowrap"}},m2.emoji+" "+m2.label)];
+      if(st===ST.PARTIAL&&ist.completionPct)rk.push(h("span",{key:"p2",style:{fontSize:"10px",color:"#fbbf24"}},ist.completionPct+"%"));
+      if(ist.tsOverride)rk.push(h("span",{key:"o",style:{fontSize:"9px",color:"#a78bfa"}},"הוזז"));
+
+      return h("div",{key:item.id,onClick:function(){setSelItem(item);},style:{background:m2.bg,border:"1px solid "+m2.border,borderRight:"3px solid "+ac,borderRadius:"10px",padding:"11px 12px",marginBottom:"7px",cursor:"pointer",opacity:isDone?0.6:1}},
+        h("div",{style:{display:"flex",justifyContent:"space-between",gap:"8px"}},[
+          h("div",{key:"l",style:{flex:1,minWidth:0}},lk),
+          h("div",{key:"r",style:{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"4px"}},rk)
+        ])
+      );
+    });
+    return h("div",{key:slot||"none",style:{marginBottom:"20px"}},[
+      h("div",{key:"hdr",style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}},[
+        h("div",{key:"t",style:{background:"#0f172a",border:"1px solid #1e2d45",borderRadius:"6px",padding:"4px 10px",fontSize:"11px",fontWeight:800,color:"#7dd3fc",whiteSpace:"nowrap"}},slot||"ללא שעה"),
+        h("div",{key:"ln",style:{flex:1,height:"1px",background:"linear-gradient(90deg,#1e2d45,transparent)"}}),
+        h("span",{key:"n",style:{fontSize:"10px",color:"#334155"}},""+all.length)
+      ]),
+      h("div",{key:"cards"},cards)
+    ]);
+  }).filter(Boolean);
+
+  if(breaksHere.length&&flt==="all"&&depF==="all"){
+    blocks.push(h("div",{key:"brk",style:{marginTop:"6px",paddingTop:"14px",borderTop:"1px dashed #1e2d45"}},
+      [h("div",{key:"t",style:{fontSize:"10px",color:"#334155",fontWeight:700,marginBottom:"8px",letterSpacing:"1px"}},"מקטעים ומעברים")].concat(
+        breaksHere.map(function(b){
+          // התא הממוזג משתרע גם על עמודת השעה, אז ts זהה לעיתים לתווית
+          var pre=(b.ts&&b.script.indexOf(b.ts)<0)?b.ts+" · ":"";
+          return h("div",{key:b.id,style:{background:"#0b1220",border:"1px solid #1e2d45",borderRadius:"8px",padding:"8px 11px",marginBottom:"5px",fontSize:"12px",color:"#64748b",fontStyle:"italic"}},
+            pre+b.script);
+        }))));
+  }
+
+  var syncColor=syncStatus==="syncing"?"#fbbf24":syncStatus==="ok"?"#4ade80":syncStatus==="error"?"#f87171":"#7dd3fc";
+  var syncTitle=syncStatus==="syncing"?"מסנכרן":syncStatus==="ok"?"מסונכרן":syncStatus==="error"?"שגיאת סנכרון":"מחובר";
+
+  var headBtns=[
+    h("span",{key:"set",title:syncTitle,onClick:pull,style:{background:"#0f172a",border:"1px solid "+syncColor,color:syncColor,borderRadius:"8px",padding:"6px 10px",fontSize:"14px",lineHeight:1,cursor:"pointer"}},"☁")
+  ];
+  if(proj.url)headBtns.push(h("a",{key:"sh",href:proj.url,target:"_blank",rel:"noopener",title:"פתח בגוגל-שיטס",style:{background:"#052e16",border:"1px solid #166534",color:"#4ade80",borderRadius:"8px",padding:"6px 10px",fontSize:"13px",lineHeight:1,textDecoration:"none"}},"📊"));
+  headBtns.push(h("button",{key:"b",onClick:function(){setShowGD(true);},style:{background:"#1e1b4b",border:"1px solid #4c1d95",color:"#a78bfa",borderRadius:"8px",padding:"8px 12px",fontSize:"12px",fontWeight:700,cursor:"pointer"}},"⏰"));
+
+  var children=[
+    h("div",{key:"hdr",style:{background:"linear-gradient(180deg,#0f1929 0%,#060d1a 100%)",borderBottom:"1px solid #1e2d45",position:"sticky",top:0,zIndex:50}},[
+      h("div",{key:"top",style:{padding:"12px 14px 10px"}},[
+        h("div",{key:"row",style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"8px"}},[
+          h("div",{key:"t",style:{display:"flex",alignItems:"center",gap:"9px",minWidth:0}},[
+            h("button",{key:"bk",onClick:props.onBack,title:"כל הברייקדאונים",style:{background:"#0f172a",border:"1px solid #1e2d45",color:"#94a3b8",borderRadius:"8px",padding:"6px 10px",fontSize:"14px",cursor:"pointer",lineHeight:1,flexShrink:0}},"→"),
+            h("h1",{key:"h",style:{margin:0,fontSize:"15px",fontWeight:800,color:"#f1f5f9",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},proj.name||"ברייקדאון")
+          ]),
+          h("div",{key:"btns",style:{display:"flex",gap:"6px",alignItems:"center",flexShrink:0}},headBtns)
+        ]),
+        h("div",{key:"pb",style:{marginTop:"11px",display:"flex",gap:"10px",alignItems:"center"}},[
+          h("div",{key:"bar",style:{flex:1,background:"#0f1929",borderRadius:"3px",height:"5px",overflow:"hidden",border:"1px solid #1e2d45"}},
+            h("div",{style:{width:pct+"%",height:"100%",background:"linear-gradient(90deg,#22c55e,#4ade80)"}})),
+          h("span",{key:"n",style:{fontSize:"11px",color:"#64748b",whiteSpace:"nowrap",fontWeight:700}},done+"/"+total+" · "+pct+"%")
+        ])
+      ]),
+      days.length>1?h("div",{key:"tabs",style:{display:"flex",borderTop:"1px solid #1e2d45",overflowX:"auto"}},dayTabs):null,
+      depRow,
+      h("div",{key:"flt",style:{padding:"7px 12px 8px",display:"flex",gap:"6px",overflowX:"auto",borderTop:depRow?"none":"1px solid #1e2d45"}},fltPills)
+    ]),
+    h("div",{key:"body",style:{padding:"12px 12px 80px",maxWidth:"760px",margin:"0 auto"}},
+      blocks.length?blocks:h("div",{style:{textAlign:"center",color:"#475569",fontSize:"13px",padding:"40px 0"}},"אין פריטים שמתאימים לסינון"))
+  ];
+  if(selItem)children.push(h(Modal,{key:"m",item:selItem,ist:statuses[selItem.id]||{},ts:tsOf(selItem),
+    onSave:function(p){upSt(selItem.id,p);setSelItem(null);},
+    onDelay:function(m){delayOne(selItem.id,m);setSelItem(null);},
+    onClose:function(){setSelItem(null);}}));
+  if(showGD)children.push(h(GDModal,{key:"gd",onConfirm:delayDay,onClose:function(){setShowGD(false);}}));
+  return h("div",{dir:"rtl",style:{background:"#060d1a",minHeight:"100vh"}},children);
+}
+
+// ============================================================
+function App(){
+  var sp=useState(function(){return ls("bd_projects",[]);}),projects=sp[0],setProjects=sp[1];
+  var ss=useState(function(){return ls("bd_sel",null);}),sel=ss[0],setSel=ss[1];
+  var sl=useState(true),loading=sl[0],setLoading=sl[1];
+  var se=useState(""),err=se[0],setErr=se[1];
+
+  function refresh(){
+    return api(null,{action:"list"}).then(function(d){
+      setProjects(d.projects||[]);save("bd_projects",d.projects||[]);
+      setLoading(false);setErr("");
+      return d.projects||[];
+    })["catch"](function(e){setLoading(false);setErr(e.message||"נכשל");return null;});
+  }
+  useEffect(function(){refresh();},[]);
+  useEffect(function(){save("bd_sel",sel);},[sel]);
+
+  if(sel){
+    var meta=null;projects.forEach(function(p){if(p.id===sel)meta=p;});
+    return h(Board,{pid:sel,meta:meta,onBack:function(){setSel(null);refresh();}});
+  }
+  if(loading&&!projects.length){
+    return h("div",{className:"loader"},[
+      h("div",{key:"r",className:"loader-row"},[h("div",{key:1,className:"dot"}),h("div",{key:2,className:"dot"}),h("div",{key:3,className:"dot"})]),
+      h("div",{key:"t",className:"loader-text"},"טוען...")
+    ]);
+  }
+  if(err&&!projects.length){
+    return h("div",{dir:"rtl",style:{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"14px",padding:"24px",textAlign:"center"}},[
+      h("div",{key:"e",style:{fontSize:"38px"}},"⚠️"),
+      h("div",{key:"t",style:{fontSize:"14px",color:"#fca5a5",maxWidth:"340px",lineHeight:1.6}},err),
+      h("button",{key:"r",onClick:function(){setLoading(true);refresh();},style:Object.assign({},btnStyle,{padding:"10px 20px"})},"נסה שוב")
+    ]);
+  }
+  return h(Picker,{projects:projects,
+    onOpen:function(id){setSel(id);},
+    onAdded:function(){refresh();},
+    onRemove:function(id){
+      setProjects(projects.filter(function(p){return p.id!==id;}));
+      api({action:"remove",p:id}).then(refresh)["catch"](function(){refresh();});
+    }});
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+out/*.xlsx
+extracted/
+files.zip
+apps-script/.clasp.json
