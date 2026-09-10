@@ -11,6 +11,7 @@ import { SyncBadge } from './chips';
 import SetMode from './SetMode';
 import ListMode from './ListMode';
 import StatusSheet from './StatusSheet';
+import ShareLinks from './ShareLinks';
 
 type Mode = 'set' | 'list';
 
@@ -39,6 +40,7 @@ export default function Board({
   const [mode, setMode] = useState<Mode>('set');
   const [depFilter, setDepFilter] = useState('all');
   const [sel, setSel] = useState<Shot | null>(null);
+  const [share, setShare] = useState(false);
 
   const curDay = days.includes(day) ? day : (days[0] ?? '');
   const dayShots = useMemo(
@@ -129,6 +131,22 @@ export default function Board({
             </div>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               <SyncBadge sync={sync} queued={queued} onClick={() => void flush()} />
+              <button
+                onClick={() => setShare(true)}
+                className="tap chip"
+                title="קישור ללקוח"
+                style={{
+                  background: 'var(--surface)',
+                  color: 'var(--accent)',
+                  borderColor: 'var(--accent)',
+                  minHeight: 40,
+                  padding: '0 12px',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                }}
+              >
+                🔗
+              </button>
               <ThemeToggle compact />
             </div>
           </div>
@@ -275,6 +293,8 @@ export default function Board({
           <ListMode shots={filtered} status={status} tsOf={tsOf} onOpen={(s) => setSel(s)} />
         )}
       </div>
+
+      {share && <ShareLinks productionId={production.id} onClose={() => setShare(false)} />}
 
       {sel && (
         <StatusSheet

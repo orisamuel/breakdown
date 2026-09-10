@@ -13,8 +13,11 @@ import io, json, os, secrets, sys, urllib.request, urllib.error
 REF = os.environ.get('SB_PROJECT_REF', 'ceoegfwbwvdsbiztwskb')
 TOKEN = os.environ.get('SUPABASE_ACCESS_TOKEN', '')
 UA = {'User-Agent': 'breakdown-verify/1.0'}
-INTERNAL = ('logistics_prod', 'logistics_client', 'notes', 'cast_note',
-            'wardrobe', 'reason', 'dep', 'cluster')
+# מה שאסור להגיע ללקוח. שים לב: logistics_client, cast_note ו-wardrobe
+# *כן* נחשפים בכוונה – הן הדרישות ממנו, וזו כל הסיבה שהמסך קיים.
+# מה שנשאר פנימי: הציוד שלנו, ההערות, הסיבות ותלות הקאסט.
+INTERNAL = ('logistics_prod', 'notes', 'reason', 'dep', 'cluster')
+EXPECTED_CLIENT = ('needs_who', 'needs_what', 'wardrobe')
 
 ok = []
 fail = []
@@ -64,7 +67,16 @@ cols = sorted(rows[0].keys()) if rows else []
 leaked = [c for c in cols if c in INTERNAL]
 check('client_board returns rows', bool(rows), '%d cols' % len(cols))
 check('no internal columns exposed', not leaked, ','.join(leaked) or 'clean')
+missing = [c for c in EXPECTED_CLIENT if c not in cols]
+check('client gets the requirements columns', not missing, ','.join(missing) or 'all present')
 print('       columns: %s' % ', '.join(cols))
+
+reqs = sql("select * from public.client_requirements('" + TOKEN_FIXTURE + "') limit 3")
+check('client_requirements groups by time block', bool(reqs),
+      '%d blocks' % len(reqs))
+if reqs:
+    rl = [c for c in reqs[0].keys() if c in INTERNAL]
+    check('requirements surface clean', not rl, ','.join(rl) or 'clean')
 
 meta = sql("select * from public.client_meta('" + TOKEN_FIXTURE + "')")
 check('client_meta returns progress', bool(meta),
