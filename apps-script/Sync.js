@@ -22,6 +22,8 @@ function doGet(e) {
   try {
     var q = (e && e.parameter) || {};
     if (q.action === 'diag' && q.p) return json_(diag_(q.p));
+    if (q.action === 'shotlist') return json_(readShotlist());
+    if (q.action === 'shotlistUrl') return json_({ url: shotlistUrl() });
     if (q.p) return json_(loadProject_(q.p));
     return json_({ projects: projects_() });
   } catch (err) {
@@ -40,6 +42,7 @@ function doPost(e) {
     if (action === 'remove') return json_({ ok: removeProject_(body.p) });
     if (action === 'rename') return json_({ ok: true, project: renameProject_(body.p, body.name, body.slug) });
     if (action === 'rebuild') return json_({ ok: true, url: setup() });
+    if (action === 'buildShotlist') return json_({ ok: true, url: buildShotlist() });
 
     if (action === 'statuses') {
       var entry = body.p ? findProject_(body.p) : legacyProject_();

@@ -411,6 +411,7 @@ def head(ws_, cols):
 
 tot = sum(r['דק׳'] for r in ROWS)
 neta = sum(r['דק׳'] for r in ROWS if r['מלון'] == 'בית של נטע')
+neta_n = sum(1 for r in ROWS if r['מלון'] == 'בית של נטע')
 onset = tot - neta
 
 ws2.append(['סיכום זמני צילום – לפני תזמון'])
@@ -472,6 +473,45 @@ payload = {
 }
 with io.open(os.path.join(OUT, 'shotlist.json'), 'w', encoding='utf-8') as f:
     json.dump(payload, f, ensure_ascii=False, indent=1)
+
+# ---------------- מטען לבניית הגוגל-שיט דרך האפסקריפט ----------------
+def _sum(pred_key):
+    out = []
+    for k, _ in Counter(r[pred_key] for r in ROWS).most_common():
+        rows_k = [r for r in ROWS if r[pred_key] == k]
+        m = sum(r['דק׳'] for r in rows_k)
+        out.append([k, len(rows_k), m, round(m / 60.0, 1)])
+    return out
+
+
+sheets = {
+    'title': 'שוט ליסט · אסטרל HR · לאישור',
+    'headers': HDR,
+    'rows': [list(r.values()) for r in ROWS],
+    'widths': W,
+    'catColors': CATC,
+    'wardrobeColors': WC,
+    'catCol': HDR.index('קטגוריה'),
+    'vidCol': HDR.index('סרטון'),
+    'wardrobeCol': HDR.index('הלבשה'),
+    'minCol': HDR.index('דק׳'),
+    'okCol': HDR.index('אושר'),
+    'totals': {
+        'headers': ['חתך', 'שוטים', 'דקות', 'שעות'],
+        'overall': [
+            ['סה״כ', len(ROWS), tot, round(tot / 60.0, 1)],
+            ['  בית של נטע (מועד נפרד)', neta_n, neta, round(neta / 60.0, 1)],
+            ['  לצילום באילת', len(ROWS) - neta_n, onset, round(onset / 60.0, 1)],
+        ],
+        'byDep': _sum('תלות קאסט'),
+        'byArea': _sum('אזור'),
+        'byWardrobe': _sum('הלבשה'),
+        'byHotel': _sum('מלון'),
+    },
+}
+with io.open(os.path.join(OUT, 'shotlistdata.json'), 'w', encoding='utf-8') as f:
+    json.dump(sheets, f, ensure_ascii=False, separators=(',', ':'))
+print('shotlistdata.json:', os.path.getsize(os.path.join(OUT, 'shotlistdata.json')), 'bytes')
 
 print('סרטונים: %d · שוטים: %d' % (len(VIDEOS), len(ROWS)))
 print('סה״כ זמן צילום: %d דק׳ = %.1f שעות' % (tot, tot / 60.0))
