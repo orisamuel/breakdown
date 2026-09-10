@@ -4,3 +4,6 @@ out/*.xlsx
 extracted/
 files.zip
 apps-script/.clasp.json
+db/.db-password
+db/.create-body.json
+.env*.local
